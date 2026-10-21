@@ -22,5 +22,5 @@ source = "src"
 
 import {
   "soehi/gguf@0.1.0",
-  "soehi/moonlm@0.1.0",
+  "soehi/moonlm@0.1.1",
 }
