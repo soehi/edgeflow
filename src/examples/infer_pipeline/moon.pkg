@@ -1,0 +1,20 @@
+// Native-only example: loads a real model from disk and runs one pipeline.
+
+import {
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+  "soehi/edgeflow/infer",
+  "soehi/edgeflow/pipeline",
+  "soehi/edgeflow/sink",
+  "soehi/edgeflow/source",
+  "soehi/moonlm/engine",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "native"
+
+options(
+  "native-stub": [ "stubs.c" ],
+)

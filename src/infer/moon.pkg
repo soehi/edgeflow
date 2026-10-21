@@ -1,0 +1,7 @@
+// Engine-backed inference stage: one prompt item in, one continuation out.
+
+import {
+  "soehi/edgeflow/pipeline",
+  "soehi/moonlm/engine",
+  "soehi/moonlm/sampler",
+}

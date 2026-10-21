@@ -1,0 +1,5 @@
+// Item sinks: collect and JSON render.
+
+import {
+  "soehi/edgeflow/pipeline",
+}
