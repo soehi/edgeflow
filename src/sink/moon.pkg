@@ -1,5 +1,6 @@
 // Item sinks: collect and JSON render.
 
 import {
+  "moonbitlang/core/string",
   "soehi/edgeflow/pipeline",
 }

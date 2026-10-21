@@ -5,10 +5,26 @@ MoonBit. No FFI, no third-party dependencies; builds and tests on `native`
 and `wasm-gc`.
 
 The unit of work is an `Item` — text plus string metadata — that moves through
-an ordered list of `Stage`s. Sources produce items, sinks consume them, and
-nothing in the skeleton reads a file, opens a socket, or loads a model. That
-is the point: the composition rules can be tested and pinned before any
-behavior worth the name is attached.
+an ordered list of stages. Sources produce items (memory or sandboxed files),
+transforms edit, dedup and chunk them, an inference stage can append a model
+continuation, and sinks aggregate and render the result.
+
+## Install
+
+```bash
+moon add soehi/edgeflow@0.1.3
+```
+
+```moonbit
+// In a package that depends on edgeflow:
+let p = @pipeline.Pipeline::new()
+  .then(@transform.trim())
+  .then_batch(@transform.dedup())
+  .then_batch(@transform.chunk_by_chars(200))
+let items = @source.memory_source([" hello ", "hello", "world"])
+let out = p.run_all(items)          // 2 items: "hello", "world"
+let report = @sink.to_json(out).stringify()
+```
 
 ## Scope
 
@@ -17,13 +33,13 @@ behavior worth the name is attached.
   The error names the stage that failed, from the pipeline's own reading of
   `Stage::name`, so a stage is always located even when its error text is
   terse.
-- **In-memory source.** `memory_source(items)` turns plain strings into
-  `Item`s. The shape any real source will match later; it carries no
-  provenance yet because nothing consumes one.
-- **Text transforms.** `trim`, `uppercase`, `replace` over `Item::text`,
-  preserving `meta`. A stage maps one item to one item — it cannot drop or
-  duplicate — which is what keeps `run` a straight loop rather than a
-  scheduler.
+- **Sources.** `memory_source(items)` turns plain strings into `Item`s.
+  On native, `file_source(path)` reads one file and `dir_source(root,
+  recursive)` walks a tree — both sandboxed. A source is any function
+  producing `Array[Item]`, so there is no source trait.
+- **Text transforms.** `trim`, `collapse_whitespace`, `lowercase` and
+  `token_stats` map one item to one item, preserving `meta`. `dedup` and the
+  two chunkers change the item count and are `BatchStage`s.
 - **Engine wrapper (thin).** `src/infer` is a pipeline stage that calls a
   MoonLM `Engine`: encode, generate, decode, back into an `Item` with a
   `generated_tokens` entry in `meta`. It holds a `&@engine.Engine` — the trait
@@ -36,7 +52,30 @@ behavior worth the name is attached.
   `max_tokens` exceed the engine's context length, the stage fails with both
   numbers in the message rather than letting generation stop early and return
   a short answer that reads like a complete one.
-- **Result aggregation.** Sinks collect items and render them as JSON.
+- **Result aggregation.** `sink::count`, `group_by_meta`, `top_k` (numeric on
+  a metadata key, stable on ties) and `to_json`, which emits
+  `{"items": [...], "summary": {"item_count", "total_tokens", "groups"}}`.
+
+## CLI
+
+`src/cli` builds `moonflow`, a native front end that runs the whole flow:
+
+```
+moonflow run --model <gguf> --input <dir|file> [--chunk-tokens N] [--max-tokens N] [--topk N] [--json]
+
+dir_source -> trim -> dedup -> chunk_by_tokens -> infer -> top_k -> json
+```
+
+`--chunk-tokens` is measured with the loaded model's own tokenizer, so the
+budget is the one the engine sees. Without `--model` the command exits 2 with
+a usage error; a model path that cannot be read exits 1. Nothing is truncated
+silently: an unreadable input, an over-cap file, or an over-context prompt is
+an error.
+
+```bash
+moon build src/cli --target native --release
+moonflow run --model model.gguf --input ./docs --chunk-tokens 64 --max-tokens 8
+```
 
 ## Non-goals
 
@@ -70,16 +109,26 @@ moon check --target native && moon check --target wasm-gc
 moon test  --target native && moon test  --target wasm-gc
 ```
 
-While developing against an unreleased change in `moonlm`, point the dependency
-at the local tree instead with a `moon.work` in the parent directory:
+### Branch A vs branch B
+
+This module resolves dependencies **from the registry (branch A)**: both
+`soehi/moonlm@0.1.0` and `soehi/gguf@0.1.0` are published, `moon.mod` pins
+them, and a fresh clone builds with `moon update` alone. CI asserts this: it
+runs `moon update`, and fails if a `moon.work` workspace is present, because a
+workspace could make the build pass on one machine while the published module
+is broken.
+
+While developing against an unreleased change in `moonlm`, you can opt into a
+local workspace (branch B) in the parent directory:
 
 ```bash
 cd ..                       # the directory containing both modules
 moon work init && moon work use ./moonlm ./edgeflow
 ```
 
-That is a local-development convenience, not a requirement: without it the
-registry versions above are used, which is what CI does.
+That is a local convenience only. If the dependency is ever resolved this way
+permanently, it is no longer a publishable module, and CI will (correctly)
+refuse it until the dependency is released.
 
 ## Layout
 
@@ -87,10 +136,45 @@ registry versions above are used, which is what CI does.
 |---|---|
 | `src/pipeline/` | `Item`, `Stage`, `BatchStage`, `StageError`, `Pipeline`, and the test stages (trim, uppercase, replace, always-fail). |
 | `src/source/` | `memory_source`; native `file_source` / `dir_source` with their own path sandbox. |
-| `src/sink/` | `collect` and `to_json`. |
+| `src/sink/` | `collect`, `count`, `group_by_meta`, `top_k`, `to_json`. |
 | `src/transform/` | `trim` / `collapse_whitespace` / `lowercase` / `token_stats` (one-in-one-out); `dedup` and `chunk_by_chars` / `chunk_by_tokens` (whole-list). |
 | `src/infer/` | `InferStage`: the MoonLM `Engine` as one pipeline stage. |
+| `src/cli/` | `moonflow`: the native command-line front end. |
 | `src/examples/infer_pipeline/` | Native example: `memory_source → InferStage → collect` on a real GGUF. |
+
+## Measured
+
+One run on the maintainer's machine (Windows 11, AMD64, MoonBit
+`0.1.20260819`, native release, single-threaded), model
+`SmolLM2-135M-Instruct-Q8_0.gguf` (138 MB). These are **not** performance
+claims; they are what one run produced, recorded so the shape of a run is
+visible. Throughput is host-dependent and no threshold is set.
+
+Input: a directory of 3 small text files, one of which is a duplicate.
+
+```
+$ moonflow run --model SmolLM2-...Q8_0.gguf --input <dir> \
+               --chunk-tokens 32 --max-tokens 8 --topk 3
+
+items: 2, total tokens: 11, top 2 shown
+  [6 tok] .../b.txt
+    Water is composed of hydrogen and oxygen. The oxygen is released as a
+  [5 tok] .../a.txt
+    The capital of France is Paris. Paris is the largest city in
+elapsed: 1744 ms
+```
+
+| Metric | Value |
+|---|---|
+| input files | 3 (2 after dedup) |
+| items out | 2 |
+| total tokens (prompt chunks) | 11 |
+| wall clock | ~1.7–1.8 s |
+| peak working set | 189.3 MB |
+
+Dedup is visible in the item count: three files in, two out. Peak memory
+matches the standalone benchmark for this model (189 MB), which is expected —
+the pipeline adds chunk bookkeeping, not another model copy.
 
 ## Two kinds of stage
 

@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: MoonBit (native + wasm-gc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit toolchain
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      # This module takes its dependencies from the MoonBit registry
+      # (`soehi/moonlm@0.1.0`, `soehi/gguf@0.1.0`), so the registry index has
+      # to be fetched before the build plan can be solved.
+      - name: Resolve registry dependencies
+        run: moon update
+
+      # Guard against the CI accidentally passing because of a local
+      # `moon.work` workspace or a sibling checkout: this module is published
+      # and must build on its own. If a workspace file ever appears in the
+      # repo, fail loudly rather than produce a green run that only works on
+      # one machine — the same reason the published version is the contract.
+      - name: Assert the module is self-contained
+        run: |
+          if [ -e moon.work ] || [ -e ../moon.work ]; then
+            echo "::error::a moon.work workspace is present; this module must resolve its dependencies from the registry, not a local workspace"
+            exit 1
+          fi
+          if ! grep -q 'soehi/moonlm@0\.' moon.mod; then
+            echo "::error::moon.mod does not pin a registry version of soehi/moonlm (expected e.g. @0.1.0)"
+            exit 1
+          fi
+
+      - name: Show toolchain version
+        run: moon version
+
+      - name: Static check (native)
+        run: moon check --target native
+
+      - name: Static check (wasm-gc)
+        run: moon check --target wasm-gc
+
+      - name: Test (native)
+        run: moon test --target native
+
+      - name: Test (wasm-gc)
+        run: moon test --target wasm-gc
+
+      # The CLI is native-only (it reads a model from disk); building it is
+      # the check that its stubs link and its flow compiles against the
+      # published dependency versions.
+      - name: Build the CLI (native, release)
+        run: moon build src/cli --target native --release

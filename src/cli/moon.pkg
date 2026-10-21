@@ -1,0 +1,21 @@
+// moonflow: a native command-line front end for a text pipeline.
+
+import {
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+  "soehi/edgeflow/infer",
+  "soehi/edgeflow/pipeline",
+  "soehi/edgeflow/sink",
+  "soehi/edgeflow/source",
+  "soehi/edgeflow/transform",
+  "soehi/moonlm/engine",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "native"
+
+options(
+  "native-stub": [ "stubs.c" ],
+)
