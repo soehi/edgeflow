@@ -4,9 +4,11 @@ Relationship to moonlm: this is a separate module (`soehi/edgeflow`) that depend
 `soehi/moonlm`. It is neither a submodule nor a replacement; it consumes the engine's
 output in a text pipeline.
 
-Composable text-pipeline skeleton for on-device LLM applications, in pure
-MoonBit. No FFI, no third-party dependencies; builds and tests on `native`
-and `wasm-gc`.
+Composable text-pipeline skeleton for on-device LLM applications, in MoonBit.
+The pipeline and engine bindings are pure MoonBit; native source/file access
+sits behind a libc stub (src/source/stubs.c, src/cli/stubs.c,
+src/examples/.../stubs.c, 745 lines of C), compiled only for native. Builds and
+tests on `native` and `wasm-gc`.
 
 The unit of work is an `Item` — text plus string metadata — that moves through
 an ordered list of stages. Sources produce items (memory or sandboxed files),
@@ -16,7 +18,7 @@ continuation, and sinks aggregate and render the result.
 ## Install
 
 ```bash
-moon add soehi/edgeflow@0.1.3
+moon add soehi/edgeflow@0.1.4
 ```
 
 ```moonbit
