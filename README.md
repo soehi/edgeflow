@@ -1,5 +1,9 @@
 # soehi/edgeflow
 
+Relationship to moonlm: this is a separate module (`soehi/edgeflow`) that depends on
+`soehi/moonlm`. It is neither a submodule nor a replacement; it consumes the engine's
+output in a text pipeline.
+
 Composable text-pipeline skeleton for on-device LLM applications, in pure
 MoonBit. No FFI, no third-party dependencies; builds and tests on `native`
 and `wasm-gc`.
