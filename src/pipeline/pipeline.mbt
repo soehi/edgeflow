@@ -56,19 +56,18 @@ pub(open) trait Stage {
 ///|
 /// A stage held by a pipeline.
 ///
-/// A struct wrapping a trait reference: trait objects are first-class in
-/// MoonBit (`&Stage`), but naming the field keeps the array's element type
-/// explicit and gives the Debug instance a stable shape.
+/// `Step` is either a single-item stage or a whole-list stage; both are trait
+/// objects, first-class in MoonBit (`&Stage` / `&BatchStage`), and the enum is
+/// what lets one ordered list mix the two kinds.
 pub(all) struct BoxedStage {
-  inner : &Stage
+  inner : Step
 }
 
 ///|
 /// An ordered list of stages, run synchronously.
 ///
-/// `run` feeds the item through each stage in order and stops at the first
-/// failure: later stages never see an item that did not get through the
-/// earlier one, which is what the error tests assert.
+/// `run` (one item in, one out) and `run_all` (a list in, a list out) share
+/// this list; batch stages and item stages compose through it.
 pub(all) struct Pipeline {
   stages : Array[BoxedStage]
 }
@@ -80,13 +79,13 @@ pub fn Pipeline::new() -> Pipeline {
 }
 
 ///|
-/// Append a stage, returning the pipeline for chaining.
+/// Append a single-item stage, returning the pipeline for chaining.
 ///
 /// Mutation in place rather than a copy per `then`: a pipeline is built once
 /// and run many times, and copying the stage list at each `then` would be
 /// O(n²) construction for no benefit.
 pub fn Pipeline::then(self : Pipeline, stage : &Stage) -> Pipeline {
-  self.stages.push({ inner: stage })
+  self.stages.push({ inner: One(stage) })
   self
 }
 
@@ -97,27 +96,24 @@ pub fn Pipeline::stage_count(self : Pipeline) -> Int {
 }
 
 ///|
-/// Run the item through every stage in order.
+/// Run the item through every stage, single-item contract.
 ///
-/// On failure the error names the stage (from the stage's own `name`, taken
-/// before running it, so a stage that fails without saying where is still
-/// located) and the run stops — stages after the failure do not execute.
+/// Fails if any stage changes the item count: this entry point promises one
+/// item out, and `Dedup` / the chunk stages legitimately do not honour that,
+/// so the error points the caller at `run_all` instead of silently returning
+/// the first chunk or discarding all but one.
 pub fn Pipeline::run(self : Pipeline, item : Item) -> Result[Item, StageError] {
-  let mut current = item
-  for b in self.stages {
-    let stage = b.inner
-    // Asked before `run`: if a stage fails, its name is already known.
-    let stage_name = stage.name()
-    match Stage::run(stage, current) {
-      Ok(next) => current = next
-      Err(err) =>
-        return Err(Failed(
-          stage=stage_name,
-          reason=err_message_body(err),
-        ))
-    }
+  let many = match self.run_all([item]) {
+    Ok(r) => r
+    Err(e) => return Err(e)
   }
-  Ok(current)
+  match many.length() {
+    1 => Ok(many[0])
+    n => Err(Failed(
+      stage="pipeline",
+      reason="\{n} items came out of a single-item run; a batch or chunk stage changed the count — use run_all",
+    ))
+  }
 }
 
 ///|
@@ -131,4 +127,89 @@ fn err_message_body(err : StageError) -> String {
   match err {
     Failed(reason~, ..) => reason
   }
+}
+
+///|
+/// A stage that sees the whole item list at once and may return a different
+/// number of items.
+///
+/// `Stage` is one-in, one-out; that cannot express dropping (dedup) or
+/// fanning out (chunking) without lying about the count. A batch stage is
+/// given every item and returns the transformed list, so 0, 1, and N outputs
+/// are all honest. Stages that need to remember what they have already seen
+/// across a run — `Dedup` — hold that in a `mut` field and are therefore
+/// stateful: an instance must not be reused across pipelines or runs, which
+/// the transform package's README states where `Dedup` is defined.
+pub(open) trait BatchStage {
+  fn name(Self) -> String
+  fn run_batch(Self, Array[Item]) -> Result[Array[Item], StageError]
+}
+
+///|
+/// One position in a pipeline: either a per-item stage or a whole-list stage.
+///
+/// No `derive(Debug)`: a trait object carries no Debug instance, so the only
+/// thing `BoxedStage` can report is that a stage is present.
+pub(all) enum Step {
+  One(&Stage)
+  Many(&BatchStage)
+}
+
+///|
+/// Apply one `Step` to a list of items.
+///
+/// A one-item stage maps over the list, keeping order; a batch stage replaces
+/// the list wholesale. Failure from any item or batch short-circuits with the
+/// step's name attached, so a batch error is located exactly like a single
+/// stage error.
+fn run_step(step : Step, items : Array[Item]) -> Result[Array[Item], StageError] {
+  match step {
+    One(stage) => {
+      let stage_name = stage.name()
+      let out : Array[Item] = []
+      for item in items {
+        match Stage::run(stage, item) {
+          Ok(next) => out.push(next)
+          Err(err) =>
+            return Err(Failed(stage=stage_name, reason=err_message_body(err)))
+        }
+      }
+      Ok(out)
+    }
+    Many(batch) => {
+      let stage_name = batch.name()
+      match BatchStage::run_batch(batch, items) {
+        Ok(next) => Ok(next)
+        Err(err) =>
+          return Err(Failed(stage=stage_name, reason=err_message_body(err)))
+      }
+    }
+  }
+}
+
+///|
+/// Append a batch stage, returning the pipeline for chaining.
+pub fn Pipeline::then_batch(self : Pipeline, stage : &BatchStage) -> Pipeline {
+  self.stages.push({ inner: Many(stage) })
+  self
+}
+
+///|
+/// Run every item through every stage.
+///
+/// This is the whole-list entry point: single-item stages map over the list,
+/// batch stages transform it. It is the one that supports dedup and chunking,
+/// because those change how many items are in flight.
+pub fn Pipeline::run_all(
+  self : Pipeline,
+  items : Array[Item],
+) -> Result[Array[Item], StageError] {
+  let mut current = items
+  for b in self.stages {
+    match run_step(b.inner, current) {
+      Ok(next) => current = next
+      Err(e) => return Err(e)
+    }
+  }
+  Ok(current)
 }

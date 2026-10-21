@@ -1,6 +1,6 @@
 name = "soehi/edgeflow"
 
-version = "0.1.1"
+version = "0.1.2"
 
 readme = "README.md"
 
@@ -21,5 +21,6 @@ preferred_target = "wasm-gc"
 source = "src"
 
 import {
+  "soehi/gguf@0.1.0",
   "soehi/moonlm@0.1.0",
 }

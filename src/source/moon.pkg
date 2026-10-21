@@ -1,5 +1,35 @@
-// In-memory item source.
+// Item sources.
+//
+// `memory_source` is backend-agnostic; the filesystem sources are native-only
+// (C stubs behind them). A source is any code that produces `Array[Item]`, so
+// sources are plain functions and not a trait.
+//
+// The file sources carry their own path sandbox (`Sandbox`) rather than
+// importing moonlm's tools package: the trust situation differs (a source
+// configures its own roots; a tool resolves paths a model invented), and
+// importing the agent's sandbox would drag the agent stack into a pipeline
+// library that never calls a model.
 
 import {
+  "moonbitlang/core/encoding/utf8",
   "soehi/edgeflow/pipeline",
 }
+
+// The file-source tests push source items through a transform stage; the
+// library code itself does not depend on transform.
+import {
+  "soehi/edgeflow/transform",
+} for "test"
+
+// On wasm-gc only `utf8_test.mbt` compiles (the file sources and their tests
+// are native-only), so the test import above is unused there; imports cannot
+// be scoped per target.
+warnings = "-unused_package"
+
+options(
+  "native-stub": [ "stubs.c" ],
+  targets: {
+    "file_native.mbt": [ "native" ],
+    "file_native_test.mbt": [ "native" ],
+  },
+)

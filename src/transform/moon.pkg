@@ -1,0 +1,21 @@
+// Text transforms between items: single-value edits, dedup, and chunking.
+//
+// Single-value edits (trim, collapse, lowercase, statistics) are `Stage`s:
+// they map one item to one item. Dedup and chunking change how many items are
+// in flight — a duplicate is dropped, a document fans out into pieces — so
+// they implement `BatchStage`, which sees the whole list at once.
+//
+// The whole-list stages that remember what they have seen (`Dedup`) hold that
+// in a `mut` field, and therefore must not be shared between pipelines or
+// reused across runs. See `Dedup` in dedup.mbt.
+
+import {
+  "soehi/edgeflow/pipeline",
+  "soehi/moonlm/tokenizer",
+}
+
+// The tokenizer-adapter test builds a tiny in-memory tokenizer through gguf
+// metadata (no model file, no I/O), so it runs on both backends.
+import {
+  "soehi/gguf",
+} for "test"

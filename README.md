@@ -85,11 +85,48 @@ registry versions above are used, which is what CI does.
 
 | Path | Contents |
 |---|---|
-| `src/pipeline/` | `Item`, `Stage`, `StageError`, `Pipeline`, and the test stages (trim, uppercase, replace, always-fail). |
-| `src/source/` | `memory_source`. |
+| `src/pipeline/` | `Item`, `Stage`, `BatchStage`, `StageError`, `Pipeline`, and the test stages (trim, uppercase, replace, always-fail). |
+| `src/source/` | `memory_source`; native `file_source` / `dir_source` with their own path sandbox. |
 | `src/sink/` | `collect` and `to_json`. |
+| `src/transform/` | `trim` / `collapse_whitespace` / `lowercase` / `token_stats` (one-in-one-out); `dedup` and `chunk_by_chars` / `chunk_by_tokens` (whole-list). |
 | `src/infer/` | `InferStage`: the MoonLM `Engine` as one pipeline stage. |
 | `src/examples/infer_pipeline/` | Native example: `memory_source → InferStage → collect` on a real GGUF. |
+
+## Two kinds of stage
+
+`Stage` is one item in, one item out. That cannot express dropping a duplicate
+or fanning a document out into chunks, so those implement `BatchStage` (a whole
+list in, a whole list out) and are added with `then_batch`:
+
+```moonbit
+let p = @pipeline.Pipeline::new()
+  .then(@transform.trim())                 // item -> item
+  .then_batch(@transform.dedup())          // list -> list, fewer items
+  .then_batch(@transform.chunk_by_chars(200))
+let out = p.run_all(items)                 // whole-list entry point
+```
+
+`run(item)` still exists for single-item pipelines; it refuses (rather than
+silently truncating) if a batch or chunk stage changes the count, and points at
+`run_all`. The two entry points share one stage list, so mixing is the normal
+case.
+
+### `Dedup` is stateful: do not reuse an instance
+
+`Dedup` remembers which texts it has already admitted, in a `mut` field. That is
+what lets it drop duplicates within a run, and it is also why **one instance
+must not be shared between pipelines, or reused across runs**: the second run
+would treat the first run's texts as already seen and drop items that were never
+duplicates of *this* batch. Construct a fresh `dedup()` per pipeline. The
+behavior is pinned by a test (`dedup instance is single-run: reuse carries memory
+forward`), so it fails loudly rather than surprising you silently.
+
+### Chunking never crosses a character or a token boundary
+
+`ChunkByChars` splits on `Char` boundaries and prefers the last newline before
+the budget. `ChunkByTokens` takes an injected token counter — `chunk_by_model`
+wires the real tokenizer — and re-measures every piece, so no piece exceeds
+`max` and re-chunking an already-valid piece returns it unchanged.
 
 ```bash
 moon run src/examples/infer_pipeline -- <model.gguf> "The capital of France is" 24
