@@ -14,7 +14,9 @@ jobs:
 
       - name: Install MoonBit toolchain
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s 0.1.20261020
+          # Upstream no longer serves versioned toolchain artifacts; the
+          # installer always fetches latest, then the next step asserts it.
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       # This module takes its dependencies from the MoonBit registry
@@ -72,10 +74,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install MoonBit toolchain (pinned)
+      - name: Install MoonBit toolchain
         shell: pwsh
         run: |
-          $env:MOONBIT_INSTALL_VERSION = "0.1.20261020"
           Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
           irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
           "$HOME\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
