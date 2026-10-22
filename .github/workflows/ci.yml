@@ -14,11 +14,11 @@ jobs:
 
       - name: Install MoonBit toolchain
         run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s 0.1.20260819
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s 0.1.20261020
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       # This module takes its dependencies from the MoonBit registry
-      # (`soehi/moonlm@0.1.0`, `soehi/gguf@0.1.0`), so the registry index has
+      # (`soehi/moonlm@0.1.2`, `soehi/gguf@0.1.1`), so the registry index has
       # to be fetched before the build plan can be solved.
       - name: Resolve registry dependencies
         run: moon update
@@ -39,10 +39,10 @@ jobs:
             exit 1
           fi
 
-      # Pinned to the same version as benchmarks/CONFIG.md; installing
-      # "latest" is what let the toolchain drift between releases.
+      # The benchmark baseline is pinned in benchmarks/CONFIG.md; CI validates
+      # the current release so registry and codegen regressions surface here.
       - name: Assert toolchain
-        run: moon version | grep -F '0.1.20260819'
+        run: moon version | grep -F '0.1.20261020'
 
       - name: Static check (native)
         run: moon check --target native
@@ -65,7 +65,7 @@ jobs:
   # Windows is a first-class target for this module: the C stubs have
   # 10 _WIN32 branches (Wide-char paths, junction-aware realpath), and the
   # ubuntu job never compiles them. Pinned to the same toolchain as the
-  # ubuntu job and benchmarks/CONFIG.md.
+  # ubuntu job.
   windows:
     name: MoonBit (windows-latest)
     runs-on: windows-latest
@@ -75,7 +75,7 @@ jobs:
       - name: Install MoonBit toolchain (pinned)
         shell: pwsh
         run: |
-          $env:MOONBIT_INSTALL_VERSION = "0.1.20260819"
+          $env:MOONBIT_INSTALL_VERSION = "0.1.20261020"
           Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
           irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
           "$HOME\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
@@ -84,7 +84,7 @@ jobs:
         shell: pwsh
         run: |
           $v = moon version
-          if ($v -notmatch '0\.1\.20260819') { Write-Error "unexpected: $v"; exit 1 }
+          if ($v -notmatch '0\.1\.20261020') { Write-Error "unexpected: $v"; exit 1 }
 
       - name: Resolve registry dependencies
         run: moon update

@@ -104,8 +104,8 @@ moonflow run --model model.gguf --input ./docs --chunk-tokens 64 --max-tokens 8
 
 ## Development
 
-**Dependencies resolve from the MoonBit registry.** `soehi/moonlm@0.1.0` and
-`soehi/gguf@0.1.0` are both published, so a clone of this directory builds on
+**Dependencies resolve from the MoonBit registry.** `soehi/moonlm@0.1.2` and
+`soehi/gguf@0.1.1` are both published, so a clone of this directory builds on
 its own — no workspace file, no sibling checkout.
 
 ```bash

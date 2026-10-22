@@ -6,6 +6,7 @@ Publish order: soehi/gguf -> soehi/moonlm -> soehi/edgeflow.
 ## 0.1.4 — 2026-10-22
 
 - Consume `soehi/moonlm@0.1.2` and `soehi/gguf@0.1.1`.
+- Run CI on MoonBit `0.1.20261020`; the `0.1.20260819` baseline still builds.
 - Point `repository` at `soehi/edgeflow`.
 - Drop the "pure MoonBit" claim from the module description: native file
   sources use a libc stub (see README).
