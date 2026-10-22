@@ -44,7 +44,7 @@ jobs:
       # The benchmark baseline is pinned in benchmarks/CONFIG.md; CI validates
       # the current release so registry and codegen regressions surface here.
       - name: Assert toolchain
-        run: moon version | grep -F '0.1.20261020'
+        run: moon version | grep -E '^moon 0\.1\.2026'
 
       - name: Static check (native)
         run: moon check --target native
@@ -84,8 +84,9 @@ jobs:
       - name: Assert toolchain
         shell: pwsh
         run: |
-          $v = moon version
-          if ($v -notmatch '0\.1\.20261020') { Write-Error "unexpected: $v"; exit 1 }
+          moon version
+          $v = moon version | Out-String
+          if ($v -notmatch '0\.1\.2026') { Write-Error "unexpected: $v"; exit 1 }
 
       - name: Resolve registry dependencies
         run: moon update
